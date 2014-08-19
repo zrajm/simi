@@ -4,7 +4,7 @@ use warnings FATAL => 'all';
 use strict;
 use 5.10.0;
 
-our $VERSION       = "0.0.1";
+our $VERSION       = "0.0.2";
 our $YEAR          = "2014";
 our ($NAME)        = __FILE__ =~ m#([^/]+)$#mx;
 
@@ -90,6 +90,7 @@ foreach my $diff (@diffs) {
             $op, $text,
         );
     }
+    { local $| = 1 }                           # flush
 }
 
 if ($opt{all}) {
