@@ -1,0 +1,108 @@
+#!/usr/bin/env perl
+
+use warnings FATAL => 'all';
+use strict;
+use 5.10.0;
+
+our $VERSION       = "0.0.1";
+our $YEAR          = "2014";
+our ($NAME)        = __FILE__ =~ m#([^/]+)$#mx;
+
+##############################################################################
+
+# FIXME: add note about missing newline at end
+sub read_file {
+    my ($file) = @_;
+    open my $in, $file or die "Cannot open file '$file' for reading: $!\n";
+    my @data = <$in>;
+    close $in, $file or die "Cannot close file '$file' after reading: $!\n";
+    return wantarray
+        ? do { s/\r?\n\z// foreach @data; @data }
+        : join "", @data;
+}
+
+sub color {
+    my ($op) = @_;
+    for ($op) {
+        /^[-]$/ and return "\e[31m";
+        /^[+]$/ and return "\e[32m";
+    }
+}
+
+##############################################################################
+
+use Algorithm::Diff 'diff';
+
+my %opt = (
+    color => 1,
+    all   => 0,
+);
+
+if (@ARGV != 2) {
+    die "$0: Bad number of arguments\n",
+        "Usage: diffy FILE1 FILE2\n";
+}
+
+my @file1 = read_file shift;
+my @file2 = read_file shift;
+my $size1 = length $#file1 + 1;
+my $size2 = length $#file2 + 1;
+my @diffs = diff \@file1, \@file2;
+
+use Data::Dumper;
+my $offset = 0;
+# FIXME: show all (not just diffs)
+# FIXME: invert subdiffs (when should subdiffing be done?)
+my $color_reset = $opt{color} ? "\e[m" : "";
+my $file1_line = 0;
+my $file2_line = 0;
+foreach my $diff (@diffs) {
+    if ($opt{all}) {
+        my $num = $diff->[0][0] eq "+"
+            ? $diff->[0][1] + ($file1_line - $file2_line)
+            : $diff->[0][1];
+        foreach ($file1_line .. $num - 1) {
+            printf(
+                "%${size1}s %${size1}s %1s %s\n",
+                # $op eq "+" ? ("", $num) : ($num, ""),
+                $_ + 1, $file2_line += 1,
+                "", $file1[$_],
+            );
+        }
+        $file1_line = $num - 1;
+    } else {
+        say "----------------------------------------"
+            if $file1_line || $file2_line;
+    }
+
+    my %x;
+    foreach (@$diff) { $x{ $_->[0] } += 1 }    # count '-' and '+'
+
+    foreach (@$diff) {                         # display diffy parts
+        my ($op, $num, $text) = @$_;
+        my $color = $opt{color} ? color($op) : "";
+        #$num += 1;
+        printf(
+            "%${size1}s %${size1}s $color%1s %s$color_reset\n",
+            $op eq "+"
+                ? ("", ($file2_line = $num) + 1)
+                : (($file1_line = $num) + 1, ""),
+            $op, $text,
+        );
+    }
+}
+
+if ($opt{all}) {
+    foreach ($file1_line + 1 .. $#file1) {
+        printf(
+            "%${size1}s %${size1}s %1s %s\n",
+            # $op eq "+" ? ("", $num) : ($num, ""),
+            $_ + 1, ($file2_line += 1) + 1,
+            "", $file1[$_],
+        );
+    }
+}
+
+##############################################################################
+
+#[eof]

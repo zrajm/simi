@@ -1,0 +1,11 @@
+----------------------------------------
+ 4    [31m- dddddddddd[m
+ 5    [31m- eeeeeeeeee[m
+ 6    [31m- ffffffffff[m
+----------------------------------------
+15    [31m- oooo[7mBYE[27moooooo[m
+   12 [32m+ oooo[7mHEJ[27moooooo[m
+----------------------------------------
+   19 [32m+ DDDDDDDDDD[m
+   20 [32m+ EEEEEEEEEE[m
+   21 [32m+ FFFFFFFFFF[m

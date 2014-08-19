@@ -1,0 +1,52 @@
+https://github.com/zrajm/fix.sh/commit/a1656bcd74a4b88c2a86a6e44a6e0a273daa3cbc
+
+--------------------------------------------------------------------------------
+This looks gooood:
+
+325 329  END_SKIP() {
+326 330  [ $# = 0 ] || error "END_SKIP: No args allowed"
+327      [31m-    [0;41mTEST[0;31m_SKIP=""[m
+    331  [32m+    [0;42mDASHTAP[0;31m_SKIP=""[m
+328 332  }
+--------------------------------------------------------------------------------
+This looks good, too
+
+325 329  END_SKIP() {
+326 330  [ $# = 0 ] || error "END_SKIP: No args allowed"
+327      [31m-    [7mTEST[27m_SKIP=""[m
+    331  [32m+    [7mDASHTAP[27m_SKIP=""[m
+328 332  }
+--------------------------------------------------------------------------------
+This will work badly if only whitespace has changed:
+
+325 329  END_SKIP() {
+326 330  [ $# = 0 ] || error "END_SKIP: No args allowed"
+327      [31m-    [1mTEST[0;31m_SKIP=""[m
+    331  [32m+    [1mDASHTAP[0;32m_SKIP=""[m
+328 332  }
+--------------------------------------------------------------------------------
+375 379  # automatically increased.
+376 380  result() {
+377 381      local RESULT="$1" DESCR="$2"
+378     [31m-    TEST_COUNT="$(( TEST_COUNT + 1 ))"[m
+    382 [32m+    [ -z "$DASHTAP_COUNT" ] && error "result: 'dashtap_init' was never called"[m
+    383 [32m+    DASHTAP_COUNT="$(( DASHTAP_COUNT + 1 ))"
+379 384      case "$DESCR" in
+380     [31m-        "")  echo "$RESULT $TEST_COUNT" ;;[m
+381     [31m-        \#*) echo "$RESULT $TEST_COUNT $DESCR" ;;[m
+382     [31m-        *)   echo "$RESULT $TEST_COUNT - $DESCR" ;;[m
+    385 [32m+        "")  echo "$RESULT $DASHTAP_COUNT" ;;[m
+    386 [32m+        \#*) echo "$RESULT $DASHTAP_COUNT $DESCR" ;;[m
+    387 [32m+        *)   echo "$RESULT $DASHTAP_COUNT - $DESCR" ;;[m
+383 388      esac
+384 389  }
+385 390
+         @@ -409,7 +414,7 @@ fail() {
+409 414      local DESCR="$(descr TODO "$1")" MSG="$2"
+410 415      result "not ok" "$DESCR"
+411 416      match "# TODO" "$DESCR" && return 0        # no diagnostics for TODO tests
+412     [31m-    [7mTEST_FAILS=$(( TEST_FAILS + 1 ))[m
+    417 [32m+    [7mDASHTAP_FAILS="$(( DASHTAP_FAILS + 1 ))"[m
+413 418      # Insert extra newline when piped (so 'prove' output looks ok).
+414 419      # (Skip this if we're bailing out after the failure.)
+415 420      [ -n "$BAIL_ON_FAIL" -o -t 1 ] || echo >&2
