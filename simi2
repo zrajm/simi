@@ -5,7 +5,6 @@ use strict;
 use 5.10.0;
 
 # FIXME: invert subdiffs (when should subdiffing be done?)
-# FIXME: make set/output object oriented
 
 ##############################################################################
 
@@ -21,26 +20,35 @@ sub read_file {
 }
 
 {
-    my %opt = (
-        '+' => "",
-        '-' => "",
-        ""  => "",
-        reset => "",
-        old_width => 3,
-        new_width => 3,
-    );
+    package Local::Output;
+
+    sub new {
+        my ($class, %arg) = @_;
+        return bless({
+            '+'   => "",                       # ANSI terminal hilite strings
+            '-'   => "",
+            ""    => "",
+            reset => "",
+        }, $class)->set(%arg);
+    }
 
     sub set {
-        my %arg = @_;
+        my ($self, %arg) = @_;
         foreach (keys %arg) {
-            $opt{$_} = $arg{$_};
+            $self->{$_} = $arg{$_};
         }
+        foreach (qw( old_width new_width )) {
+            die "Option '$_' must set to a number, not " .
+                (defined($self->{$_}) ? "'$self->{$_}'" : "undef") . "\n"
+                    if ($self->{$_} // '') !~ /^\d+$/;
+        }
+        return $self;
     }
 
     sub output {
-        my ($change, $old, $new, $string) = @_;
+        my ($self, $change, $old, $new, $string) = @_;
         printf(
-            "%$opt{old_width}s %$opt{new_width}s $opt{$change}%1s %s$opt{reset}\n",
+            "%$self->{old_width}s %$self->{new_width}s $self->{$change}%1s %s$self->{reset}\n",
             $old,
             $new,
             $change,
@@ -70,15 +78,15 @@ my ($old, $new) = (1, 1);                      # line count
 use Algorithm::Diff 'sdiff';
 my @sdiff = sdiff(\@old, \@new);
 
-set(
-    old_width => length scalar @old,
-    new_width => length scalar @new,
+my $out = Local::Output->new(
+    old_width => length(scalar @old),
+    new_width => length(scalar @new),
 );
 
 if ($opt{color}) {
-    set(
-        '+' => "\e[32m",
-        '-' => "\e[31m",
+    $out->set(
+        '+'   => "\e[32m",
+        '-'   => "\e[31m",
         reset => "\e[m"
     );
 }
@@ -89,7 +97,7 @@ foreach (@sdiff) {
 
     if ($change eq "u") {                      # unchanged
         if ($opt{all}) {
-            output("", $old, $new, $oldstr);
+            $out->output("", $old, $new, $oldstr);
         } elsif (!$line) {
             say "------------------------------";
             $line = 1;
@@ -100,15 +108,15 @@ foreach (@sdiff) {
     }
     $line = 0;
     if ($change eq "c") {                      # changed
-        output("-", $old, "", $oldstr);
-        output("+", "", $new, $newstr);
+        $out->output("-", $old, "", $oldstr);
+        $out->output("+", "", $new, $newstr);
         $old += 1;
         $new += 1;
     } elsif ($change eq "+") {                 # added
-        output("+", "", $new, $newstr);
+        $out->output("+", "", $new, $newstr);
         $new += 1;
     } elsif ($change eq "-") {                 # removed
-        output("-", $old, "", $oldstr);
+        $out->output("-", $old, "", $oldstr);
         $old += 1;
     }
 }
