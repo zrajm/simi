@@ -1,5 +1,6 @@
 #!/usr/bin/env perl
 
+package Local::Modulino; #[http://www.drdobbs.com/scripts-as-modules/184416165]
 use warnings FATAL => 'all';
 use strict;
 use 5.10.0;
@@ -159,73 +160,80 @@ sub one_line_hilite {
 
 ##############################################################################
 
-my %opt = (
-    color => 1,
-    all   => 0,
-    mark  => 1,                                # -m, --mark (?)
-    merge => 0,
-);
+sub run {
+    my (undef, $oldfile, $newfile) = @_;
 
-if (@ARGV != 2) {
-    die "$NAME: Bad number of arguments\n",
-        "Usage: $NAME FILE1 FILE2\n";
-}
-
-my @old = read_file shift;
-my @new = read_file shift;
-
-use Algorithm::Diff 'sdiff';
-my @sdiff = sdiff(\@old, \@new);
-
-my $out = Local::Output->new(
-    old_width => length(scalar @old),
-    new_width => length(scalar @new),
-);
-
-if ($opt{color}) {
-    $out->set(
-        '+'   => $GREEN,
-        '-'   => $RED,
-        plain => $PLAIN,
+    my %opt = (
+        color => 1,
+        all   => 0,
+        mark  => 1,                            # -m, --mark (?)
+        merge => 0,
     );
-}
 
-my $line = 0;
-my ($old, $new) = (1, 1);                      # line count
-foreach (@sdiff) {
-    my ($change, $oldline, $newline) = @$_;
-
-    if ($change eq "u") {                      # unchanged
-        if ($opt{all}) {
-            $out->output("", $old, $new, $oldline);
-        } elsif (!$line) {
-            say "------------------------------";
-            $line = 1;
-        }
-        $old += 1;
-        $new += 1;
-        next;
+    if (@ARGV != 2) {
+        die "$NAME: Bad number of arguments\n",
+            "Usage: $NAME FILE1 FILE2\n";
     }
-    $line = 0;
-    if ($change eq "c") {                      # changed
-        if ($opt{merge}) {
-            my ($line) = one_line_hilite($oldline, $newline);
-            $out->output("", $old, $new, $line);
-        } else {
-            ($oldline, $newline) = two_line_hilite($oldline, $newline)
-                if $opt{mark};
-            $out->output("-", $old, "", $oldline);
+
+    my @old = read_file $oldfile;
+    my @new = read_file $newfile;
+
+    use Algorithm::Diff 'sdiff';
+    my @sdiff = sdiff(\@old, \@new);
+
+    my $out = Local::Output->new(
+        old_width => length(scalar @old),
+        new_width => length(scalar @new),
+    );
+
+    if ($opt{color}) {
+        $out->set(
+            '+'   => $GREEN,
+            '-'   => $RED,
+            plain => $PLAIN,
+        );
+    }
+
+    my $line = 0;
+    my ($old, $new) = (1, 1);                  # line count
+    foreach (@sdiff) {
+        my ($change, $oldline, $newline) = @$_;
+
+        if ($change eq "u") {                  # unchanged
+            if ($opt{all}) {
+                $out->output("", $old, $new, $oldline);
+            } elsif (!$line) {
+                say "------------------------------";
+                $line = 1;
+            }
+            $old += 1;
+            $new += 1;
+            next;
+        }
+        $line = 0;
+        if ($change eq "c") {                  # changed
+            if ($opt{merge}) {
+                my ($line) = one_line_hilite($oldline, $newline);
+                $out->output("", $old, $new, $line);
+            } else {
+                ($oldline, $newline) = two_line_hilite($oldline, $newline)
+                    if $opt{mark};
+                $out->output("-", $old, "", $oldline);
+                $out->output("+", "", $new, $newline);
+            }
+            $old += 1;
+            $new += 1;
+        } elsif ($change eq "+") {             # added
             $out->output("+", "", $new, $newline);
+            $new += 1;
+        } elsif ($change eq "-") {             # removed
+            $out->output("-", $old, "", $oldline);
+            $old += 1;
         }
-        $old += 1;
-        $new += 1;
-    } elsif ($change eq "+") {                 # added
-        $out->output("+", "", $new, $newline);
-        $new += 1;
-    } elsif ($change eq "-") {                 # removed
-        $out->output("-", $old, "", $oldline);
-        $old += 1;
     }
 }
+
+# run after all globals etc. has been set up properly
+__PACKAGE__->run(@ARGV) unless caller();
 
 #[eof]
