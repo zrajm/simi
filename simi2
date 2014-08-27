@@ -5,7 +5,7 @@ use warnings FATAL => 'all';
 use strict;
 use 5.10.0;
 
-our $VERSION       = "0.1.0";
+our $VERSION       = "0.1.1";
 our $YEAR          = "2014";
 our ($NAME)        = __FILE__ =~ m#([^/]+)$#mx;
 our ($PLAIN, $RED, $GREEN) = ("\e[m", "\e[0;31m", "\e[0;32m");
@@ -16,6 +16,10 @@ our ($MARKED_RED, $MARKED_GREEN) = ("\e[7;1m", "\e[7;1m");
 # FIXME: improve displaying of stuff between modified lines
 
 ##############################################################################
+##                                                                          ##
+##  Functions                                                               ##
+##                                                                          ##
+##############################################################################
 
 # FIXME: add note about missing newline at end
 sub read_file {
@@ -24,7 +28,7 @@ sub read_file {
     my @data = <$in>;
     close $in, $file or die "Cannot close file '$file' after reading: $!\n";
     return wantarray
-        ? do { s/\r?\n\z// foreach @data; @data }
+        ? do { s#\r?\n\z##mx foreach @data; @data }
         : join "", @data;
 }
 
@@ -76,9 +80,9 @@ sub sdiff_merge {
 sub sdiff_extract {
     my ($modifier, @list) = @_;
     return map {
-        (local $_, my $old, my $new) = @$_;
-        s/^c$/$modifier/;
-        /^[u$modifier]$/ ? [$_, $old, $new] : ();
+        my ($c, $old, $new) = @$_;
+        $c =~ s#^c$#$modifier#mx;
+        $c =~ m#^[u$modifier]$#mx ? [$c, $old, $new] : ();
     } @list;
 }
 
@@ -106,7 +110,7 @@ sub two_line_hilite {
 sub one_line_hilite {
     my ($oldline, $newline) = @_;
     my @diff = char_sdiff $oldline, $newline;
-    my $line = join("", map {
+    return join("", map {
         my ($c, $oldchar, $newchar) = @$_;
         if ($c eq "u") {
             $oldchar;
@@ -119,6 +123,12 @@ sub one_line_hilite {
         }
     } @diff);
 }
+
+##############################################################################
+##                                                                          ##
+##  Output Formatting Module                                                ##
+##                                                                          ##
+##############################################################################
 
 {
     package Local::Output;
@@ -141,15 +151,16 @@ sub one_line_hilite {
         foreach (qw( old_width new_width )) {
             die "Option '$_' must set to a number, not " .
                 (defined($self->{$_}) ? "'$self->{$_}'" : "undef") . "\n"
-                    if ($self->{$_} // '') !~ /^\d+$/;
+                    if ($self->{$_} // '') !~ m#^\d+$#mx;
         }
         return $self;
     }
 
     sub output {
         my ($self, $change, $old_count, $new_count, $line) = @_;
-        printf(
-            "%$self->{old_width}s %$self->{new_width}s $self->{$change}%1s %s$self->{plain}\n",
+        return printf(
+            "%$self->{old_width}s %$self->{new_width}s " .
+                "$self->{$change}%1s %s$self->{plain}\n",
             $old_count,
             $new_count,
             $change,
@@ -158,6 +169,10 @@ sub one_line_hilite {
     }
 }
 
+##############################################################################
+##                                                                          ##
+##  Main                                                                    ##
+##                                                                          ##
 ##############################################################################
 
 sub run {
@@ -231,6 +246,7 @@ sub run {
             $old += 1;
         }
     }
+    return;
 }
 
 # run after all globals etc. has been set up properly
