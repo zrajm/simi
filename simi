@@ -1,5 +1,18 @@
 #!/usr/bin/env perl
 
+##
+## simi - show differences between two files, highlighting changed characters
+## Copyright (C) 2014 zrajm <zrajm@zrajm.org>
+##
+## This program is free software: you can redistribute it and/or modify it
+## under the terms of the GNU General Public License as published by the Free
+## Software Foundation, either version 3 of the License, or (at your option)
+## any later version.
+##
+## You should have received a copy of the GNU General Public License along
+## with this program. If not, see <http://www.gnu.org/licenses/>.
+##
+
 package Local::Modulino; #[http://www.drdobbs.com/scripts-as-modules/184416165]
 use warnings FATAL => 'all';
 use strict;
@@ -11,7 +24,6 @@ our ($NAME)        = __FILE__ =~ m#([^/]+)$#mx;
 our ($PLAIN, $RED, $GREEN) = ("\e[m", "\e[0;31m", "\e[0;32m");
 our ($MARKED_RED, $MARKED_GREEN) = ("\e[7;1m", "\e[7;1m");
 
-# FIXME: add (github) license
 # FIXME: add README.md
 # FIXME: word based diff (see './simi texts/{a,b}.txt' for why)
 # FIXME: diff mode for non-code
