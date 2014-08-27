@@ -4,12 +4,15 @@ use warnings FATAL => 'all';
 use strict;
 use 5.10.0;
 
-our $VERSION       = "0.0.2";
+our $VERSION       = "0.1.0";
 our $YEAR          = "2014";
 our ($NAME)        = __FILE__ =~ m#([^/]+)$#mx;
-our ($PLAIN, $RED, $GREEN) = ("\e[m", "\e[31m", "\e[32m");
+our ($PLAIN, $RED, $GREEN) = ("\e[m", "\e[0;31m", "\e[0;32m");
+our ($MARKED_RED, $MARKED_GREEN) = ("\e[7;1m", "\e[7;1m");
 
-# FIXME: invert subdiffs (when should subdiffing be done?)
+# FIXME: parse options
+# FIXME: improve 'merge' type of subdiff line
+# FIXME: improve displaying of stuff between modified lines
 
 ##############################################################################
 
@@ -22,6 +25,98 @@ sub read_file {
     return wantarray
         ? do { s/\r?\n\z// foreach @data; @data }
         : join "", @data;
+}
+
+# Usage: sdiff_hilite SDIFF
+#
+# Return list with suitable words highlighted. SDIFF is in the same format as
+# the return value of Algorithm::Diff's sdiff().
+sub sdiff_hilite {
+    my @diff = @_;
+    return join "", map {
+        my ($c, $oldchar, $newchar) = @$_;
+        if ($c eq "u") {
+            $oldchar;
+        } elsif ($c eq "+") {
+            "$MARKED_GREEN$newchar$GREEN";
+        } elsif ($c eq "-") {
+            "$MARKED_RED$oldchar$RED";
+        }
+    } @diff;
+}
+
+# Usage: sdiff_merge SDIFF
+#
+# Process an Algorithm::Diff SDIFF array, and merge all consecutive elements
+# with the same modifier indicator into one large element. Useful to construct
+# larger blocks of all the elements with the same modifier indicator.
+sub sdiff_merge {
+    my (@sdiff) = @_;
+    my @new_sdiff;
+    foreach (@sdiff) {
+        my $latest = $new_sdiff[$#new_sdiff] // [ "" ];
+        my ($c, $old, $new) = @$_;
+        if ($latest->[0] eq $c) {
+            $latest->[1] .= $old;
+            $latest->[2] .= $new;
+        } else {
+            push @new_sdiff, [ $c, $old, $new ];
+        }
+    }
+    return @new_sdiff;
+}
+
+# Usage: sdiff_extract TYPE SDIFF
+#
+# SDIFF argument is an array-of-arrays, as returned by Algorithm::Diff's
+# sdiff() function. Each element in SDIFF contains an array ref with a)
+# modifier indicator ('u' - unchanged, 'c' - changed, '+' - added, or '-' -
+# removed); b) a the old string from the diff and; c) the new string.
+sub sdiff_extract {
+    my ($modifier, @list) = @_;
+    return map {
+        (local $_, my $old, my $new) = @$_;
+        s/^c$/$modifier/;
+        /^[u$modifier]$/ ? [$_, $old, $new] : ();
+    } @list;
+}
+
+# Usage: char_sdiff OLDLINE NEWLINE
+#
+# Splits OLDLINE and NEWLINE into characters, compares them using
+# Algorithm::Diff's sdiff() function and return the result of that function.
+sub char_sdiff {
+    my ($oldline, $newline) = @_;
+    use Algorithm::Diff 'sdiff';
+    return sdiff(
+        [ split "", $oldline ],
+        [ split "", $newline ],
+    );
+}
+
+sub two_line_hilite {
+    my ($oldline, $newline) = @_;
+    my @diff = char_sdiff $oldline, $newline;
+    $oldline = sdiff_hilite sdiff_merge sdiff_extract("-", @diff);
+    $newline = sdiff_hilite sdiff_merge sdiff_extract("+", @diff);
+    return ($oldline, $newline);
+}
+
+sub one_line_hilite {
+    my ($oldline, $newline) = @_;
+    my @diff = char_sdiff $oldline, $newline;
+    my $line = join("", map {
+        my ($c, $oldchar, $newchar) = @$_;
+        if ($c eq "u") {
+            $oldchar;
+        } elsif ($c eq "+") {
+            "$GREEN$newchar$PLAIN";
+        } elsif ($c eq "-") {
+            "$RED$oldchar$PLAIN";
+        } elsif ($c eq "c") {
+            "$RED$oldchar$GREEN$newchar$PLAIN";
+        }
+    } @diff);
 }
 
 {
@@ -67,6 +162,8 @@ sub read_file {
 my %opt = (
     color => 1,
     all   => 0,
+    mark  => 1,                                # -m, --mark (?)
+    merge => 0,
 );
 
 if (@ARGV != 2) {
@@ -111,8 +208,15 @@ foreach (@sdiff) {
     }
     $line = 0;
     if ($change eq "c") {                      # changed
-        $out->output("-", $old, "", $oldline);
-        $out->output("+", "", $new, $newline);
+        if ($opt{merge}) {
+            my ($line) = one_line_hilite($oldline, $newline);
+            $out->output("", $old, $new, $line);
+        } else {
+            ($oldline, $newline) = two_line_hilite($oldline, $newline)
+                if $opt{mark};
+            $out->output("-", $old, "", $oldline);
+            $out->output("+", "", $new, $newline);
+        }
         $old += 1;
         $new += 1;
     } elsif ($change eq "+") {                 # added
