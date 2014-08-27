@@ -5,22 +5,63 @@ use warnings FATAL => 'all';
 use strict;
 use 5.10.0;
 
-our $VERSION       = "0.1.1";
+our $VERSION       = "0.2.1";
 our $YEAR          = "2014";
 our ($NAME)        = __FILE__ =~ m#([^/]+)$#mx;
 our ($PLAIN, $RED, $GREEN) = ("\e[m", "\e[0;31m", "\e[0;32m");
 our ($MARKED_RED, $MARKED_GREEN) = ("\e[7;1m", "\e[7;1m");
 
-# FIXME: parse options
 # FIXME: improve 'merge' type of subdiff line
 # FIXME: improve displaying of stuff between modified lines
-# FIXME: add note about missing newline at end
+# FIXME: add note about missing newline in file at end
+# FIXME: options --no-color and --mark should work together
+# FIXME: -N/--no-number + -n/--number (a la 'cat') for line numbers on/off
+# FIXME: --help
+# FIXME: --version
+# FIXME: --man
+# FIXME: --side-by-side
+# FIXME: manpage
+# FIXME: tests!!!
 
 ##############################################################################
 ##                                                                          ##
 ##  Functions                                                               ##
 ##                                                                          ##
 ##############################################################################
+
+# Usage: getoptlong ARGLISTREF, OPTSPEC
+#
+# Process ARGLIST according to the OPTSPEC, and inserting the results into
+# OPTHASH. Both OPTHASH and ARGLIST are changed by this process. This is a
+# Getopt::Long wrapper, with clearer error messages.
+#
+#   * ARGLIST must be a literal array. This is a GNU-style command line, with
+#     arguments and options. All options arguments in ARGLIST are removed as
+#     they are processed, leaving only unprocessed arguments.
+#
+#   * OPTSPEC is passed as-is to the GetOptions() function of Getopt::Long.
+#     And specifies which options to accept (see also 'man Getopt::Long').
+sub getoptlong {
+    my ($arg, @opt_spec) = @_;
+    package Local::get_options;
+    use Getopt::Long qw(
+        GetOptionsFromArray :config
+        posix_default bundling gnu_compat no_ignore_case permute
+    );
+    # Modify Getopt::Long's error messages:
+    #   'Option <OPT> requires an argument' and 'Unknown option: <OPT>',
+    #   should have "'--option'" or "'-o'" rather than just "option" or "o".
+    local $SIG{__WARN__} = sub {
+        local ($_) = @_;
+        s{ \b (option[: ]+) ([-\w]+) }{
+            my $x = length($2) == 1 ? '-' : '--';
+            "$1'$x$2'";
+        }mxie;
+        warn "$NAME: $_";
+    };
+    # See: Getopt::Long(3pm) -- "Storing options values in a hash"
+    return GetOptionsFromArray($arg, @opt_spec);
+}
 
 sub read_file {
     my ($file) = @_;
@@ -175,28 +216,69 @@ sub one_line_hilite {
 ##                                                                          ##
 ##############################################################################
 
-sub run {
-    my (undef, $oldfile, $newfile) = @_;
+# Usage: color_opt [ OPTNAME, OPTARG ]
+#
+# If called with OPTNAME and OPTARG arguments sets 'color' to true/false
+# (depending on OPTARG), or if OPTARG is invalid, die()s with an informative
+# message. When called without arguments return the last set 'color' value.
+{
+    my $color;
+    sub color_opt {
+        (my $opt, local $_) = @_ or  return $color // -t STDOUT ? 1 : 0;
+        /^(yes|always|force)$/mx and return $color = 1;
+        /^(no |never |none )$/mx and return $color = 0;
+        /^(tty|if-tty|auto )$/mx and return $color = -t STDOUT ? 1 : 0;
+        die "Invalid argument '$_' for option $opt\n",
+            "Valid arguments are:\n",
+                "    o 'always', 'yes', 'force'\n",
+                "    o 'never', 'no', 'none'\n",
+                "    o 'auto', 'tty', 'if-tty'\n";
+    }
+    sub color_opt_off { $color = 0 }
+}
 
-    my %opt = (
-        color => 1,
-        all   => 0,
-        mark  => 1,                            # -m, --mark (?)
-        merge => 0,
+sub run {
+    my (undef, @arg) = @_;
+
+    my %opt;
+    %opt = (                                   # default options
+        color      => \&color_opt,
+        "no-color" => sub { color_opt_off; $opt{mark} = 0 },
+        "no-mark"  => sub { $opt{mark} = 0 },
+        all        => 0,
+        mark       => 1,
+        merge      => 0,
     );
 
-    if (@ARGV != 2) {
-        die "$NAME: Bad number of arguments\n",
+    getoptlong(
+        \@arg,              # command line arguments
+        \%opt,              # options hash
+        'no-color|C',       ### same as '--color=never'
+        'color|c=s',        ### WHEN colorize the output; WHEN can be 'never', 'auto',
+                            ### or 'tty' (the default); more info below
+        'all|a',            ### output all text (not just differing lines)
+        #'help|h|?',         ## display this help and exit
+        #'man|M',            ## display program manpage and exit
+        'mark|m',           ### enable sub-line diffs (default)
+        'no-mark|m',        ### disable sub-line diffs
+        'merge|1',          ### show differing lines as one line, not old + new
+        #'version|V',        ## output version information and exit
+    ) or die "Try '$NAME --help' for more information.\n";
+    if (@arg != 2) {
+        die "$NAME: Bad number of filenames\n",
             "Usage: $NAME FILE1 FILE2\n";
     }
 
-    my @old = read_file $oldfile;
-    my @new = read_file $newfile;
+    # Remove callbacks needed by getoptlong() from options hash
+    $opt{color} = color_opt;
+    delete @opt{qw( no-color no-mark )};
 
+    my ($oldfile, $newfile) = @arg;
     use Algorithm::Diff 'sdiff';
+    my @old   = read_file $oldfile;
+    my @new   = read_file $newfile;
     my @sdiff = sdiff(\@old, \@new);
-
-    my $out = Local::Output->new(
+    my $out   = Local::Output->new(
         old_width => length(scalar @old),
         new_width => length(scalar @new),
     );
@@ -251,5 +333,23 @@ sub run {
 
 # run after all globals etc. has been set up properly
 __PACKAGE__->run(@ARGV) unless caller();
+
+__END__
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--color>=I<WHEN>
+
+Show colored diff. B<--color> (i.e. without =I<WHEN>) is not allowed. I<WHEN>
+can be one of C<always>, C<never>, or C<auto>.
+
+=item B<--no-color>
+
+Turn off colored diff. This can be used to override configuration settings. It
+is the same as B<--color=never>.
+
+=back
 
 #[eof]
