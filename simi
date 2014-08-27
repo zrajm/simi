@@ -1,109 +1,255 @@
 #!/usr/bin/env perl
 
+package Local::Modulino; #[http://www.drdobbs.com/scripts-as-modules/184416165]
 use warnings FATAL => 'all';
 use strict;
 use 5.10.0;
 
-our $VERSION       = "0.0.2";
+our $VERSION       = "0.1.1";
 our $YEAR          = "2014";
 our ($NAME)        = __FILE__ =~ m#([^/]+)$#mx;
+our ($PLAIN, $RED, $GREEN) = ("\e[m", "\e[0;31m", "\e[0;32m");
+our ($MARKED_RED, $MARKED_GREEN) = ("\e[7;1m", "\e[7;1m");
+
+# FIXME: parse options
+# FIXME: improve 'merge' type of subdiff line
+# FIXME: improve displaying of stuff between modified lines
+# FIXME: add note about missing newline at end
 
 ##############################################################################
+##                                                                          ##
+##  Functions                                                               ##
+##                                                                          ##
+##############################################################################
 
-# FIXME: add note about missing newline at end
 sub read_file {
     my ($file) = @_;
     open my $in, $file or die "Cannot open file '$file' for reading: $!\n";
     my @data = <$in>;
     close $in, $file or die "Cannot close file '$file' after reading: $!\n";
     return wantarray
-        ? do { s/\r?\n\z// foreach @data; @data }
+        ? do { s#\r?\n\z##mx foreach @data; @data }
         : join "", @data;
 }
 
-sub color {
-    my ($op) = @_;
-    for ($op) {
-        /^[-]$/ and return "\e[31m";
-        /^[+]$/ and return "\e[32m";
-    }
-}
-
-##############################################################################
-
-use Algorithm::Diff 'diff';
-
-my %opt = (
-    color => 1,
-    all   => 0,
-);
-
-if (@ARGV != 2) {
-    die "$0: Bad number of arguments\n",
-        "Usage: diffy FILE1 FILE2\n";
-}
-
-my @file1 = read_file shift;
-my @file2 = read_file shift;
-my $size1 = length $#file1 + 1;
-my $size2 = length $#file2 + 1;
-my @diffs = diff \@file1, \@file2;
-
-use Data::Dumper;
-my $offset = 0;
-# FIXME: show all (not just diffs)
-# FIXME: invert subdiffs (when should subdiffing be done?)
-my $color_reset = $opt{color} ? "\e[m" : "";
-my $file1_line = 0;
-my $file2_line = 0;
-foreach my $diff (@diffs) {
-    if ($opt{all}) {
-        my $num = $diff->[0][0] eq "+"
-            ? $diff->[0][1] + ($file1_line - $file2_line)
-            : $diff->[0][1];
-        foreach ($file1_line .. $num - 1) {
-            printf(
-                "%${size1}s %${size1}s %1s %s\n",
-                # $op eq "+" ? ("", $num) : ($num, ""),
-                $_ + 1, $file2_line += 1,
-                "", $file1[$_],
-            );
+# Usage: sdiff_hilite SDIFF
+#
+# Return list with suitable words highlighted. SDIFF is in the same format as
+# the return value of Algorithm::Diff's sdiff().
+sub sdiff_hilite {
+    my @diff = @_;
+    return join "", map {
+        my ($c, $oldchar, $newchar) = @$_;
+        if ($c eq "u") {
+            $oldchar;
+        } elsif ($c eq "+") {
+            "$MARKED_GREEN$newchar$GREEN";
+        } elsif ($c eq "-") {
+            "$MARKED_RED$oldchar$RED";
         }
-        $file1_line = $num - 1;
-    } else {
-        say "----------------------------------------"
-            if $file1_line || $file2_line;
-    }
-
-    my %x;
-    foreach (@$diff) { $x{ $_->[0] } += 1 }    # count '-' and '+'
-
-    foreach (@$diff) {                         # display diffy parts
-        my ($op, $num, $text) = @$_;
-        my $color = $opt{color} ? color($op) : "";
-        #$num += 1;
-        printf(
-            "%${size1}s %${size1}s $color%1s %s$color_reset\n",
-            $op eq "+"
-                ? ("", ($file2_line = $num) + 1)
-                : (($file1_line = $num) + 1, ""),
-            $op, $text,
-        );
-    }
-    { local $| = 1 }                           # flush
+    } @diff;
 }
 
-if ($opt{all}) {
-    foreach ($file1_line + 1 .. $#file1) {
-        printf(
-            "%${size1}s %${size1}s %1s %s\n",
-            # $op eq "+" ? ("", $num) : ($num, ""),
-            $_ + 1, ($file2_line += 1) + 1,
-            "", $file1[$_],
+# Usage: sdiff_merge SDIFF
+#
+# Process an Algorithm::Diff SDIFF array, and merge all consecutive elements
+# with the same modifier indicator into one large element. Useful to construct
+# larger blocks of all the elements with the same modifier indicator.
+sub sdiff_merge {
+    my (@sdiff) = @_;
+    my @new_sdiff;
+    foreach (@sdiff) {
+        my $latest = $new_sdiff[$#new_sdiff] // [ "" ];
+        my ($c, $old, $new) = @$_;
+        if ($latest->[0] eq $c) {
+            $latest->[1] .= $old;
+            $latest->[2] .= $new;
+        } else {
+            push @new_sdiff, [ $c, $old, $new ];
+        }
+    }
+    return @new_sdiff;
+}
+
+# Usage: sdiff_extract TYPE SDIFF
+#
+# SDIFF argument is an array-of-arrays, as returned by Algorithm::Diff's
+# sdiff() function. Each element in SDIFF contains an array ref with a)
+# modifier indicator ('u' - unchanged, 'c' - changed, '+' - added, or '-' -
+# removed); b) a the old string from the diff and; c) the new string.
+sub sdiff_extract {
+    my ($modifier, @list) = @_;
+    return map {
+        my ($c, $old, $new) = @$_;
+        $c =~ s#^c$#$modifier#mx;
+        $c =~ m#^[u$modifier]$#mx ? [$c, $old, $new] : ();
+    } @list;
+}
+
+# Usage: char_sdiff OLDLINE NEWLINE
+#
+# Splits OLDLINE and NEWLINE into characters, compares them using
+# Algorithm::Diff's sdiff() function and return the result of that function.
+sub char_sdiff {
+    my ($oldline, $newline) = @_;
+    use Algorithm::Diff 'sdiff';
+    return sdiff(
+        [ split "", $oldline ],
+        [ split "", $newline ],
+    );
+}
+
+sub two_line_hilite {
+    my ($oldline, $newline) = @_;
+    my @diff = char_sdiff $oldline, $newline;
+    $oldline = sdiff_hilite sdiff_merge sdiff_extract("-", @diff);
+    $newline = sdiff_hilite sdiff_merge sdiff_extract("+", @diff);
+    return ($oldline, $newline);
+}
+
+sub one_line_hilite {
+    my ($oldline, $newline) = @_;
+    my @diff = char_sdiff $oldline, $newline;
+    return join("", map {
+        my ($c, $oldchar, $newchar) = @$_;
+        if ($c eq "u") {
+            $oldchar;
+        } elsif ($c eq "+") {
+            "$GREEN$newchar$PLAIN";
+        } elsif ($c eq "-") {
+            "$RED$oldchar$PLAIN";
+        } elsif ($c eq "c") {
+            "$RED$oldchar$GREEN$newchar$PLAIN";
+        }
+    } @diff);
+}
+
+##############################################################################
+##                                                                          ##
+##  Output Formatting Module                                                ##
+##                                                                          ##
+##############################################################################
+
+{
+    package Local::Output;
+
+    sub new {
+        my ($class, %arg) = @_;
+        return bless({
+            '+'   => "",                       # ANSI terminal hilite strings
+            '-'   => "",
+            ""    => "",
+            plain => "",
+        }, $class)->set(%arg);
+    }
+
+    sub set {
+        my ($self, %arg) = @_;
+        foreach (keys %arg) {
+            $self->{$_} = $arg{$_};
+        }
+        foreach (qw( old_width new_width )) {
+            die "Option '$_' must set to a number, not " .
+                (defined($self->{$_}) ? "'$self->{$_}'" : "undef") . "\n"
+                    if ($self->{$_} // '') !~ m#^\d+$#mx;
+        }
+        return $self;
+    }
+
+    sub output {
+        my ($self, $change, $old_count, $new_count, $line) = @_;
+        return printf(
+            "%$self->{old_width}s %$self->{new_width}s " .
+                "$self->{$change}%1s %s$self->{plain}\n",
+            $old_count,
+            $new_count,
+            $change,
+            $line,
         );
     }
 }
 
 ##############################################################################
+##                                                                          ##
+##  Main                                                                    ##
+##                                                                          ##
+##############################################################################
+
+sub run {
+    my (undef, $oldfile, $newfile) = @_;
+
+    my %opt = (
+        color => 1,
+        all   => 0,
+        mark  => 1,                            # -m, --mark (?)
+        merge => 0,
+    );
+
+    if (@ARGV != 2) {
+        die "$NAME: Bad number of arguments\n",
+            "Usage: $NAME FILE1 FILE2\n";
+    }
+
+    my @old = read_file $oldfile;
+    my @new = read_file $newfile;
+
+    use Algorithm::Diff 'sdiff';
+    my @sdiff = sdiff(\@old, \@new);
+
+    my $out = Local::Output->new(
+        old_width => length(scalar @old),
+        new_width => length(scalar @new),
+    );
+
+    if ($opt{color}) {
+        $out->set(
+            '+'   => $GREEN,
+            '-'   => $RED,
+            plain => $PLAIN,
+        );
+    }
+
+    my $line = 0;
+    my ($old, $new) = (1, 1);                  # line count
+    foreach (@sdiff) {
+        my ($change, $oldline, $newline) = @$_;
+
+        if ($change eq "u") {                  # unchanged
+            if ($opt{all}) {
+                $out->output("", $old, $new, $oldline);
+            } elsif (!$line) {
+                say "------------------------------";
+                $line = 1;
+            }
+            $old += 1;
+            $new += 1;
+            next;
+        }
+        $line = 0;
+        if ($change eq "c") {                  # changed
+            if ($opt{merge}) {
+                my ($line) = one_line_hilite($oldline, $newline);
+                $out->output("", $old, $new, $line);
+            } else {
+                ($oldline, $newline) = two_line_hilite($oldline, $newline)
+                    if $opt{mark};
+                $out->output("-", $old, "", $oldline);
+                $out->output("+", "", $new, $newline);
+            }
+            $old += 1;
+            $new += 1;
+        } elsif ($change eq "+") {             # added
+            $out->output("+", "", $new, $newline);
+            $new += 1;
+        } elsif ($change eq "-") {             # removed
+            $out->output("-", $old, "", $oldline);
+            $old += 1;
+        }
+    }
+    return;
+}
+
+# run after all globals etc. has been set up properly
+__PACKAGE__->run(@ARGV) unless caller();
 
 #[eof]
