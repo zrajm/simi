@@ -11,6 +11,10 @@ our ($NAME)        = __FILE__ =~ m#([^/]+)$#mx;
 our ($PLAIN, $RED, $GREEN) = ("\e[m", "\e[0;31m", "\e[0;32m");
 our ($MARKED_RED, $MARKED_GREEN) = ("\e[7;1m", "\e[7;1m");
 
+# FIXME: add (github) license
+# FIXME: add README.md
+# FIXME: word based diff (see './simi texts/{a,b}.txt' for why)
+# FIXME: diff mode for non-code
 # FIXME: improve 'merge' type of subdiff line
 # FIXME: improve displaying of stuff between modified lines
 # FIXME: add note about missing newline in file at end
@@ -21,7 +25,7 @@ our ($MARKED_RED, $MARKED_GREEN) = ("\e[7;1m", "\e[7;1m");
 # FIXME: --man
 # FIXME: --side-by-side
 # FIXME: manpage
-# FIXME: tests!!!
+# FIXME: tests!!!! (including one testing $VERSION)
 
 ##############################################################################
 ##                                                                          ##
