@@ -24,6 +24,7 @@ our ($NAME)        = __FILE__ =~ m#([^/]+)$#mx;
 our ($PLAIN, $RED, $GREEN) = ("\e[m", "\e[0;31m", "\e[0;32m");
 our ($MARKED_RED, $MARKED_GREEN) = ("\e[7;1m", "\e[7;1m");
 
+# FIXME: -N/--no-number + -n/--number (a la 'cat') for line numbers on/off
 # FIXME: add README.md
 # FIXME: word based diff (see './simi texts/{a,b}.txt' for why)
 # FIXME: diff mode for non-code
@@ -31,7 +32,6 @@ our ($MARKED_RED, $MARKED_GREEN) = ("\e[7;1m", "\e[7;1m");
 # FIXME: improve displaying of stuff between modified lines
 # FIXME: add note about missing newline in file at end
 # FIXME: options --no-color and --mark should work together
-# FIXME: -N/--no-number + -n/--number (a la 'cat') for line numbers on/off
 # FIXME: --help
 # FIXME: --version
 # FIXME: --man
@@ -45,7 +45,7 @@ our ($MARKED_RED, $MARKED_GREEN) = ("\e[7;1m", "\e[7;1m");
 ##                                                                          ##
 ##############################################################################
 
-# Usage: getoptlong ARGLISTREF, OPTSPEC
+# Usage: getoptlong ARGLISTREF, [CALLBACKHASHREF,] OPTSPEC
 #
 # Process ARGLIST according to the OPTSPEC, and inserting the results into
 # OPTHASH. Both OPTHASH and ARGLIST are changed by this process. This is a
@@ -57,9 +57,35 @@ our ($MARKED_RED, $MARKED_GREEN) = ("\e[7;1m", "\e[7;1m");
 #
 #   * OPTSPEC is passed as-is to the GetOptions() function of Getopt::Long.
 #     And specifies which options to accept (see also 'man Getopt::Long').
+#
+# CALLBACKHASHREF if specified, inserts callbacks into OPTSPEC.
+#
+# OPTSPEC, may (all according to the Getopt::Long doc) start with a hash
+# reference. If so, this reference may, instead of values contain callback
+# functions to invoke instead of setting an argument.
+#
+# CALLBACKHASHREF is a hash, with functions as values. The function will be
+# called with two arguments (invoked option name & option value) whenever the
+# option is used. The function will be invoked without arguments when
+# postprocessing the arguments -- when called with no argument it must return
+# the current option value.
+#
+# Before invoking GetOptions() CALLBACKSREF are folded into the option hashref
+# occurring as the first argument of OPTSPEC (if the first arg of OPTSPEC is
+# not a hashref CALLBACKREFS are ignored). Afterwards the callbacks are
+# removed from the options hash.
 sub getoptlong {
     my ($arg, @opt_spec) = @_;
     package Local::get_options;
+
+    my (%cb, $opt);
+    # insert callbacks into option hashref
+    if (ref($opt_spec[0]) eq "HASH" and ref($opt_spec[1]) eq "HASH") {
+        %cb  = %{ shift @opt_spec };
+        $opt = $opt_spec[0];
+        @$opt{ keys %cb } = values %cb;
+    }
+
     use Getopt::Long qw(
         GetOptionsFromArray :config
         posix_default bundling gnu_compat no_ignore_case permute
@@ -76,7 +102,15 @@ sub getoptlong {
         warn "$NAME: $_";
     };
     # See: Getopt::Long(3pm) -- "Storing options values in a hash"
-    return GetOptionsFromArray($arg, @opt_spec);
+    my $ret = GetOptionsFromArray($arg, @opt_spec);
+
+    # remove options callbacks (if existing)
+    if (%cb) {
+        delete @$opt{ grep /^no-/, keys %cb };
+        $opt->{$_} = $cb{$_}->()
+            foreach grep !/^no-/, keys %cb;
+    }
+    return $ret;
 }
 
 sub read_file {
@@ -256,18 +290,20 @@ sub one_line_hilite {
 sub run {
     my (undef, @arg) = @_;
 
-    my %opt;
-    %opt = (                                   # default options
-        color      => \&color_opt,
-        "no-color" => sub { color_opt_off; $opt{mark} = 0 },
-        "no-mark"  => sub { $opt{mark} = 0 },
+    my %opt = (                                # default options
         all        => 0,
         mark       => 1,
         merge      => 0,
     );
+    my %cb = (                                 # option callbacks
+        color      => \&color_opt,
+        "no-color" => sub { color_opt_off; $opt{mark} = 0 },
+        "no-mark"  => sub { $opt{mark} = 0 },
+    );
 
     getoptlong(
         \@arg,              # command line arguments
+        \%cb,
         \%opt,              # options hash
         'no-color|C',       ### same as '--color=never'
         'color|c=s',        ### WHEN colorize the output; WHEN can be 'never', 'auto',
@@ -284,10 +320,6 @@ sub run {
         die "$NAME: Bad number of filenames\n",
             "Usage: $NAME FILE1 FILE2\n";
     }
-
-    # Remove callbacks needed by getoptlong() from options hash
-    $opt{color} = color_opt;
-    delete @opt{qw( no-color no-mark )};
 
     my ($oldfile, $newfile) = @arg;
     use Algorithm::Diff 'sdiff';
