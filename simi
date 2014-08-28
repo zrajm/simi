@@ -18,18 +18,17 @@ use warnings FATAL => 'all';
 use strict;
 use 5.10.0;
 
-our $VERSION       = "0.2.1";
+our $VERSION       = "0.3.0";
 our $YEAR          = "2014";
 our ($NAME)        = __FILE__ =~ m#([^/]+)$#mx;
 our ($PLAIN, $RED, $GREEN) = ("\e[m", "\e[0;31m", "\e[0;32m");
 our ($MARKED_RED, $MARKED_GREEN) = ("\e[7;1m", "\e[7;1m");
 
-# FIXME: -N/--no-number + -n/--number (a la 'cat') for line numbers on/off
+# FIXME: improve displaying of stuff between modified lines
 # FIXME: add README.md
 # FIXME: word based diff (see './simi texts/{a,b}.txt' for why)
 # FIXME: diff mode for non-code
 # FIXME: improve 'merge' type of subdiff line
-# FIXME: improve displaying of stuff between modified lines
 # FIXME: add note about missing newline in file at end
 # FIXME: options --no-color and --mark should work together
 # FIXME: --help
@@ -231,6 +230,7 @@ sub one_line_hilite {
             '-'   => "",
             ""    => "",
             plain => "",
+            number=> 0,
         }, $class)->set(%arg);
     }
 
@@ -239,7 +239,7 @@ sub one_line_hilite {
         foreach (keys %arg) {
             $self->{$_} = $arg{$_};
         }
-        foreach (qw( old_width new_width )) {
+        foreach (qw( old_width new_width number )) {
             die "Option '$_' must set to a number, not " .
                 (defined($self->{$_}) ? "'$self->{$_}'" : "undef") . "\n"
                     if ($self->{$_} // '') !~ m#^\d+$#mx;
@@ -254,6 +254,11 @@ sub one_line_hilite {
                 "$self->{$change}%1s %s$self->{plain}\n",
             $old_count,
             $new_count,
+            $change,
+            $line,
+        ) if $self->{number};
+        return printf(
+            "$self->{$change}%1s %s$self->{plain}\n",
             $change,
             $line,
         );
@@ -294,11 +299,13 @@ sub run {
         all        => 0,
         mark       => 1,
         merge      => 0,
+        number     => 0,
     );
     my %cb = (                                 # option callbacks
-        color      => \&color_opt,
-        "no-color" => sub { color_opt_off; $opt{mark} = 0 },
-        "no-mark"  => sub { $opt{mark} = 0 },
+        color       => \&color_opt,
+        "no-color"  => sub { color_opt_off; $opt{mark} = 0 },
+        "no-mark"   => sub { $opt{mark} = 0 },
+        "no-number" => sub { $opt{number} = 0 },
     );
 
     getoptlong(
@@ -312,7 +319,9 @@ sub run {
         #'help|h|?',         ## display this help and exit
         #'man|M',            ## display program manpage and exit
         'mark|m',           ### enable sub-line diffs (default)
-        'no-mark|m',        ### disable sub-line diffs
+        'no-mark|M',        ### disable sub-line diffs
+        'number|n',         ### show line numbers
+        'no-number|N',      ### suppress line numbers (default)
         'merge|1',          ### show differing lines as one line, not old + new
         #'version|V',        ## output version information and exit
     ) or die "Try '$NAME --help' for more information.\n";
@@ -329,6 +338,7 @@ sub run {
     my $out   = Local::Output->new(
         old_width => length(scalar @old),
         new_width => length(scalar @new),
+        number    => $opt{number},
     );
 
     if ($opt{color}) {
