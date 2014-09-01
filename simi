@@ -22,6 +22,7 @@ our $VERSION       = "0.3.1";
 our $YEAR          = "2014";
 our ($NAME)        = __FILE__ =~ m#([^/]+)$#mx;
 our ($PLAIN, $RED, $GREEN) = ("\e[m", "\e[0;31m", "\e[0;32m");
+our ($CYAN)        = ("\e[0;36m");
 our ($MARKED_RED, $MARKED_GREEN) = ("\e[7;1m", "\e[7;1m");
 
 ##############################################################################
@@ -215,6 +216,7 @@ sub one_line_hilite {
             '+'   => "",                       # ANSI terminal hilite strings
             '-'   => "",
             ""    => "",
+            num_color => "",
             plain => "",
             number=> 0,
         }, $class)->set(%arg);
@@ -235,9 +237,10 @@ sub one_line_hilite {
 
     sub output {
         my ($self, $change, $old_count, $new_count, $line) = @_;
+        my $hilite_color = $self->{$change} // "";
         return printf(
-            "%$self->{old_width}s %$self->{new_width}s " .
-                "$self->{$change}%1s %s$self->{plain}\n",
+            "$self->{num_color}%$self->{old_width}s %$self->{new_width}s " .
+                "$hilite_color%1s %s$self->{plain}\n",
             $old_count,
             $new_count,
             $change,
@@ -248,6 +251,31 @@ sub one_line_hilite {
             $change,
             $line,
         );
+    }
+
+    sub output_between_diffs {
+        my ($self, $opt, $diff, $prev_i, $i, $old, $new) = @_;
+
+        my $num = $i - $prev_i;
+        return 1 if $num == 0;
+        if (not $opt->{all}) {
+            say "-" x 50;
+            return 1;
+        }
+
+        my ($old_offset, $new_offset) = ($old - $num, $new - $num);
+
+        foreach my $j (0 .. ($num - 1)) {
+            my ($change, $oldline, $newline) = @{ $diff->[ $j + $prev_i ] };
+            my ($old_count, $new_count) = ($j + $old_offset, $j + $new_offset);
+
+            $self->output("", $old_count, $new_count, $oldline);
+            die("Broken algorithm",
+                "Lines OLD:$old_count NEW:$new_count are not the same\n",
+                "    OLDLINE: $oldline\n",
+                "    NEWLINE: $newline\n",
+            ) if $oldline ne $newline;
+        }
     }
 }
 
@@ -332,46 +360,46 @@ sub run {
             '+'   => $GREEN,
             '-'   => $RED,
             plain => $PLAIN,
+            num_color => $CYAN,
         );
     }
 
-    my $line = 0;
     my ($old, $new) = (1, 1);                  # line count
+    my ($prev_i, $i) = (0, 0);
+
     foreach (@sdiff) {
         my ($change, $oldline, $newline) = @$_;
-
         if ($change eq "u") {                  # unchanged
-            if ($opt{all}) {
-                $out->output("", $old, $new, $oldline);
-            } elsif (!$line) {
-                say "------------------------------";
-                $line = 1;
-            }
             $old += 1;
             $new += 1;
-            next;
-        }
-        $line = 0;
-        if ($change eq "c") {                  # changed
+        } elsif ($change eq "c") {             # changed
             if ($opt{merge}) {
                 my ($line) = one_line_hilite($oldline, $newline);
+                $out->output_between_diffs(\%opt, \@sdiff, $prev_i, $i, $old, $new);
                 $out->output("", $old, $new, $line);
             } else {
                 ($oldline, $newline) = two_line_hilite($oldline, $newline)
                     if $opt{mark};
+                $out->output_between_diffs(\%opt, \@sdiff, $prev_i, $i, $old, $new);
                 $out->output("-", $old, "", $oldline);
                 $out->output("+", "", $new, $newline);
             }
             $old += 1;
             $new += 1;
+            $prev_i = $i + 1;
         } elsif ($change eq "+") {             # added
+            $out->output_between_diffs(\%opt, \@sdiff, $prev_i, $i, $old, $new);
             $out->output("+", "", $new, $newline);
-            $new += 1;
+            $new   += 1;
+            $prev_i = $i + 1;
         } elsif ($change eq "-") {             # removed
+            $out->output_between_diffs(\%opt, \@sdiff, $prev_i, $i, $old, $new);
             $out->output("-", $old, "", $oldline);
-            $old += 1;
+            $old   += 1;
+            $prev_i = $i + 1;
         }
-    }
+    } continue { $i += 1 }
+    $out->output_between_diffs(\%opt, \@sdiff, $prev_i, $i, $old, $new);
     return;
 }
 

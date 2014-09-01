@@ -1,7 +1,6 @@
 -*- org -*-
 
 * [0%] Program
-** TODO Improve displaying of stuff between modified lines
 ** TODO Word based diff (see './simi texts/{a,b}.txt' for why)
 ** TODO Diff mode for non-code
 ** TODO Improve 'merge' type of subdiff line
@@ -24,5 +23,7 @@
    Can README contain diff examples to be shown on github, that has color and
    everything?
 * DONE
+** DONE Improve displaying of stuff between modified lines
+   CLOSED: [2014-09-02 Tue 00:43]
 ** DONE Separate TODO from code
    CLOSED: [2014-09-01 Mon 17:27]
