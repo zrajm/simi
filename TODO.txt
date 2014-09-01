@@ -1,0 +1,28 @@
+-*- org -*-
+
+* [0%] Program
+** TODO Improve displaying of stuff between modified lines
+** TODO Word based diff (see './simi texts/{a,b}.txt' for why)
+** TODO Diff mode for non-code
+** TODO Improve 'merge' type of subdiff line
+** TODO Add note about missing newline in file at end
+** TODO Options --no-color and --mark should work together
+** TODO Add --help option
+** TODO Add --version option
+** TODO Add --man option
+** TODO Add --side-by-side option
+** TODO Get ANSI escape codes from termcap/terminfo
+* [0%] Docs/manpage
+** TODO Make sure required manpage sections are present
+** TODO Explain logic behind name 'simi'
+** TODO Document options
+* [0%] Tests
+** TODO Test code with perlcritic
+** TODO Test $VERSION
+* [0%] Repo
+** TODO Add README.md
+   Can README contain diff examples to be shown on github, that has color and
+   everything?
+* DONE
+** DONE Separate TODO from code
+   CLOSED: [2014-09-01 Mon 17:27]

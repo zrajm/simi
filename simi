@@ -18,25 +18,11 @@ use warnings FATAL => 'all';
 use strict;
 use 5.10.0;
 
-our $VERSION       = "0.3.0";
+our $VERSION       = "0.3.1";
 our $YEAR          = "2014";
 our ($NAME)        = __FILE__ =~ m#([^/]+)$#mx;
 our ($PLAIN, $RED, $GREEN) = ("\e[m", "\e[0;31m", "\e[0;32m");
 our ($MARKED_RED, $MARKED_GREEN) = ("\e[7;1m", "\e[7;1m");
-
-# FIXME: improve displaying of stuff between modified lines
-# FIXME: add README.md
-# FIXME: word based diff (see './simi texts/{a,b}.txt' for why)
-# FIXME: diff mode for non-code
-# FIXME: improve 'merge' type of subdiff line
-# FIXME: add note about missing newline in file at end
-# FIXME: options --no-color and --mark should work together
-# FIXME: --help
-# FIXME: --version
-# FIXME: --man
-# FIXME: --side-by-side
-# FIXME: manpage
-# FIXME: tests!!!! (including one testing $VERSION)
 
 ##############################################################################
 ##                                                                          ##
