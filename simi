@@ -105,9 +105,9 @@ sub getoptlong {
 
     # remove options callbacks (if existing)
     if (%cb) {
-        delete @$opt{ grep /^no-/, keys %cb };
+        delete @$opt{ grep  /^no-/mx, keys %cb };
         $opt->{$_} = $cb{$_}->()
-            foreach grep !/^no-/, keys %cb;
+            foreach   grep !/^no-/mx, keys %cb;
     }
     return $ret;
 }
@@ -289,7 +289,7 @@ sub one_line_hilite {
                 "    o 'never', 'no', 'none'\n",
                 "    o 'auto', 'tty', 'if-tty'\n";
     }
-    sub color_opt_off { $color = 0 }
+    sub color_opt_off { return $color = 0 }
 }
 
 sub run {
