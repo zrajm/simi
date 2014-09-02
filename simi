@@ -213,12 +213,12 @@ sub one_line_hilite {
     sub new {
         my ($class, %arg) = @_;
         return bless({
-            '+'   => "",                       # ANSI terminal hilite strings
-            '-'   => "",
-            ""    => "",
+            '+'       => "",                   # ANSI terminal hilite strings
+            '-'       => "",
+            ""        => "",
             num_color => "",
-            plain => "",
-            number=> 0,
+            plain     => "",
+            number    => 0,
         }, $class)->set(%arg);
     }
 
@@ -276,6 +276,7 @@ sub one_line_hilite {
                 "    NEWLINE: $newline\n",
             ) if $oldline ne $newline;
         }
+        return 1;
     }
 }
 
@@ -310,10 +311,10 @@ sub run {
     my (undef, @arg) = @_;
 
     my %opt = (                                # default options
-        all        => 0,
-        mark       => 1,
-        merge      => 0,
-        number     => 0,
+        all    => 0,
+        mark   => 1,
+        merge  => 0,
+        number => 0,
     );
     my %cb = (                                 # option callbacks
         color       => \&color_opt,
@@ -357,14 +358,14 @@ sub run {
 
     if ($opt{color}) {
         $out->set(
-            '+'   => $GREEN,
-            '-'   => $RED,
-            plain => $PLAIN,
+            '+'       => $GREEN,
+            '-'       => $RED,
             num_color => $CYAN,
+            plain     => $PLAIN,
         );
     }
 
-    my ($old, $new) = (1, 1);                  # line count
+    my ($old, $new)  = (1, 1);                 # line count
     my ($prev_i, $i) = (0, 0);
 
     foreach (@sdiff) {
