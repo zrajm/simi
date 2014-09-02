@@ -1,7 +1,8 @@
 #!/usr/bin/env perl
+# -*- ispell-dictionary: "american" -*-
 
 ##
-## simi - show differences between two files, highlighting changed characters
+## simi - show differences between two files, highlighting changes
 ## Copyright (C) 2014 zrajm <zrajm@zrajm.org>
 ##
 ## This program is free software: you can redistribute it and/or modify it
@@ -18,12 +19,111 @@ use warnings FATAL => 'all';
 use strict;
 use 5.10.0;
 
-our $VERSION       = "0.3.1";
+our $VERSION       = "0.4.1";
 our $YEAR          = "2014";
 our ($NAME)        = __FILE__ =~ m#([^/]+)$#mx;
 our ($PLAIN, $RED, $GREEN) = ("\e[m", "\e[0;31m", "\e[0;32m");
 our ($CYAN)        = ("\e[0;36m");
 our ($MARKED_RED, $MARKED_GREEN) = ("\e[7;1m", "\e[7;1m");
+
+###############################################################################
+##                                                                           ##
+##  Informational Functions                                                  ##
+##                                                                           ##
+###############################################################################
+
+sub version {
+    local $, = "\n";
+    say("$NAME $VERSION",
+        "Copyright (C) $YEAR zrajm <zrajm\@zrajm.org>",
+        "License GPLv3+: GNU GPL version 3 or later " .
+            "<http://gnu.org/licenses/gpl.html>.",
+        "This is free software: you are free to change and redistribute it.",
+    );
+    exit;
+}
+
+# Display '--help' information.
+sub help {
+    my ($longmax, @opt) = (0);
+    local $_ = read_file(__FILE__);
+    while (
+        m{^ \s*
+            (?:
+                ['"] ([^'"]*) ['"] [^'"]*
+            )?
+            (?<![#]) [#]{3} (?![#]) \s* ([^\n]*)
+        }mxg
+    ) {
+        my ($getopt, $desc) = ($1 // "", $2);
+        my ($long,  $short) = $getopt =~ /^([\w-]+).*?(?:\|(\w))?/msx;
+        $long  = $long  ? "--$long"   : "";
+        $short = $short ?  "-$short," : "";
+        if ($desc =~ s/\A([A-Z]+)\s+//mx) { $long .= "=$1" }
+
+        if (length($long) > $longmax) { $longmax = length($long) }
+        push @opt, [$short, $long, $desc];
+    }
+    # FIXME: Usage should be from the 'NAME' and 'SYNOPSIS' sections of POD.
+    #
+    # use Pod::Text;
+    # my $parser = Pod::Text->new();
+    # $parser->parse_from_file(__FILE__);
+    say "Usage: $NAME [OPTION]... FILE1 FILE2";
+    say "Show differences between two files, highlighting changes.";
+    say "";
+    say "Options:";
+    foreach (@opt) {
+        my ($short, $long, $desc) = @{ $_ };
+        printf "  %-3s %-${longmax}s  %s\n", $short, $long, $desc;
+    }
+    say "";
+    exit 0;
+}
+
+# Return random name for a tempfile.
+sub tempfile {
+    package Local::tempfile;
+    use File::Temp 'tmpnam';
+    return tmpnam();
+}
+
+# Display documentation. Tries several different methods in order of decreasing
+# excellence.
+#
+# First if, man(1) is installed, outputs a pretty manpage and displays that.
+# Otherwise, attempts to set up less(1) as a filter to catch STDOUT, and
+# displays a plain text version of the documentation. (If starting of less
+# fails, you simply get the documentation printed as-is, probably overwhelming
+# your terminal, but hopefully you can scroll back in your terminal, pipe it to
+# a file or do something else really clever with it.)
+sub man {
+    # display using man(1) if available
+    if (-x '/usr/bin/man'
+            and eval { require Pod::Man; My::Module->import(); 1 }) {
+        my $tempfile = tempfile;
+        my $parser = Pod::Man->new (
+            name    => $NAME,
+            center  => "",
+            release => $VERSION,
+            utf8    => 1,
+        )->parse_from_file(__FILE__, $tempfile);
+        no warnings 'exec'; ## no critic (ProhibitNoWarnings)
+        exec "man $tempfile";
+    }
+
+    # filter STDOUT through less(1) if available
+    if (-x '/usr/bin/less') {
+        no warnings 'exec'; ## no critic (ProhibitNoWarnings)
+        open(STDOUT, '|-', 'less');
+    }
+    eval { require Pod::Text; My::Module->import(); 1 }
+        or die "Cannot show documentation, failed to load 'Pod::Text'\n";
+    Pod::Text->new->parse_from_file(__FILE__);
+    close STDOUT;                              # tell less(1) STDOUT is done
+    wait;                                      # wait until user exits less
+    exit;
+}
 
 ##############################################################################
 ##                                                                          ##
@@ -319,26 +419,29 @@ sub run {
     my %cb = (                                 # option callbacks
         color       => \&color_opt,
         "no-color"  => sub { color_opt_off; $opt{mark} = 0 },
-        "no-mark"   => sub { $opt{mark} = 0 },
+        help        => sub { @_ and help      },
+        man         => sub { @_ and man       },
+        version     => sub { @_ and version   },
+        "no-mark"   => sub { $opt{mark}   = 0 },
         "no-number" => sub { $opt{number} = 0 },
     );
 
     getoptlong(
-        \@arg,              # command line arguments
+        \@arg,                 # command line arguments
         \%cb,
-        \%opt,              # options hash
-        'no-color|C',       ### same as '--color=never'
-        'color|c=s',        ### WHEN colorize the output; WHEN can be 'never', 'auto',
-                            ### or 'tty' (the default); more info below
-        'all|a',            ### output all text (not just differing lines)
-        #'help|h|?',         ## display this help and exit
-        #'man|M',            ## display program manpage and exit
-        'mark|m',           ### enable sub-line diffs (default)
-        'no-mark|M',        ### disable sub-line diffs
-        'number|n',         ### show line numbers
-        'no-number|N',      ### suppress line numbers (default)
-        'merge|1',          ### show differing lines as one line, not old + new
-        #'version|V',        ## output version information and exit
+        \%opt,                 # options hash
+        'color|colour|c=s',    ### WHEN colorize the output; WHEN is 'always',
+                               ### 'never' or 'auto' (the default)
+        'no-color|no-colour|C',### same as '--color=never'
+        'all|a',               ### output all text (not just differing lines)
+        'help|h|?',            ### display this help and exit
+        'man',                 ### display program manpage and exit
+        'mark|m',              ### enable sub-line diffs (default)
+        'no-mark|M',           ### disable sub-line diffs
+        'number|n',            ### show line numbers
+        'no-number|N',         ### suppress line numbers (default)
+        'merge|1',             ### show changed lines as one line
+        'version|V',           ### output version information and exit
     ) or die "Try '$NAME --help' for more information.\n";
     if (@arg != 2) {
         die "$NAME: Bad number of filenames\n",
@@ -424,5 +527,7 @@ Turn off colored diff. This can be used to override configuration settings. It
 is the same as B<--color=never>.
 
 =back
+
+=cut
 
 #[eof]
