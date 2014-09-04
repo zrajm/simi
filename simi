@@ -56,11 +56,13 @@ sub help {
         }mxg
     ) {
         my ($getopt, $desc) = ($1 // "", $2);
-        my ($long,  $short) = $getopt =~ /^([\w-]+).*?(?:\|(\w))?/msx;
-        $long  = $long  ? "--$long"   : "";
-        $short = $short ?  "-$short," : "";
+        my ($long, $short);
+        foreach ($getopt) {
+            $long  = /^[\w|-]*? \b ([\w-]{2,}) \b/msx ? "--$1" : "";
+            $short = /^[\w|-]*? \b ( \w      ) \b/msx ?  "-$1" : "";
+        }
+        if ($long and $short) { $short .= "," }
         if ($desc =~ s/\A([A-Z]+)\s+//mx) { $long .= "=$1" }
-
         if (length($long) > $longmax) { $longmax = length($long) }
         push @opt, [$short, $long, $desc];
     }
