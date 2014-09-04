@@ -407,6 +407,7 @@ sub one_line_hilite {
                 "    o 'auto', 'tty', 'if-tty'\n";
     }
     sub color_opt_off { return $color = 0 }
+    sub color_opt_set { return $color = shift(@_); }
 }
 
 sub run {
@@ -420,7 +421,8 @@ sub run {
     );
     my %cb = (                                 # option callbacks
         color       => \&color_opt,
-        "no-color"  => sub { color_opt_off; $opt{mark} = 0 },
+        c           => sub { color_opt_set(1); $opt{mark} = 1 },
+        "no-color"  => sub { color_opt_set(0); $opt{mark} = 0 },
         help        => sub { @_ and help      },
         man         => sub { @_ and man       },
         version     => sub { @_ and version   },
@@ -432,9 +434,10 @@ sub run {
         \@arg,                 # command line arguments
         \%cb,
         \%opt,                 # options hash
-        'color|colour|c=s',    ### WHEN colorize the output; WHEN is 'always',
+        'color|colour=s',      ### WHEN colorize the output; WHEN is 'always',
                                ### 'never' or 'auto' (the default)
         'no-color|no-colour|C',### same as '--color=never'
+        'c',                   ### same as '--color=always'
         'all|a',               ### output all text (not just differing lines)
         'help|h|?',            ### display this help and exit
         'man',                 ### display program manpage and exit
