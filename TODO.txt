@@ -10,12 +10,12 @@
 ** TODO Get ANSI escape codes from termcap/terminfo
 ** TODO Make sure 'simi' works for UTF8 files
 * Docs/manpage
-** Make sure required manpage sections are present
-** Explain logic behind name 'simi'
-** Document options
+** TODO Explain logic behind name 'simi'
+** TODO Document options
 * Tests
-** Test code with perlcritic
-** Test $VERSION
+** TODO Make sure required manpage sections are present
+** TODO Test code with perlcritic
+** TODO Test $VERSION
 * Repo
 ** TODO Add README.md
    Can README contain diff examples to be shown on github, that has color and
