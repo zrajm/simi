@@ -25,6 +25,10 @@ our ($NAME)        = __FILE__ =~ m#([^/]+)$#mx;
 our ($PLAIN, $RED, $GREEN) = ("\e[m", "\e[0;31m", "\e[0;32m");
 our ($CYAN)        = ("\e[0;36m");
 our ($MARKED_RED, $MARKED_GREEN) = ("\e[7;1m", "\e[7;1m");
+our $USAGE = <<EOF;
+Usage: $NAME [OPTION]... FILE1 FILE2
+Show differences between two files, highlighting changes.
+EOF
 
 ###############################################################################
 ##                                                                           ##
@@ -71,9 +75,7 @@ sub help {
     # use Pod::Text;
     # my $parser = Pod::Text->new();
     # $parser->parse_from_file(__FILE__);
-    say "Usage: $NAME [OPTION]... FILE1 FILE2";
-    say "Show differences between two files, highlighting changes.";
-    say "";
+    say $USAGE;
     say "Options:";
     foreach (@opt) {
         my ($short, $long, $desc) = @{ $_ };
@@ -83,7 +85,7 @@ sub help {
     exit 0;
 }
 
-# Return random name for a tempfile.
+# Return random name for a tempfile. (File is not created.)
 sub tempfile {
     package Local::tempfile;
     use File::Temp 'tmpnam';
