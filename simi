@@ -196,9 +196,9 @@ sub getoptlong {
 
     # remove options callbacks (if existing)
     if (%cb) {
-        delete @$opt{ grep  /^no-/mx, keys %cb };
+        delete @$opt{ grep  /^(?:no|ignore)-/mx, keys %cb };
         $opt->{$_} = $cb{$_}->()
-            foreach   grep !/^no-/mx, keys %cb;
+            foreach   grep !/^(?:no|ignore)-/mx, keys %cb;
     }
     return $ret;
 }
@@ -218,11 +218,11 @@ sub read_file {
 # Return list with suitable words highlighted. SDIFF is in the same format as
 # the return value of Algorithm::Diff's sdiff().
 sub sdiff_hilite {
-    my @diff = @_;
+    my ($oldnew, @diff) = @_;
     return join "", map {
         my ($c, $oldchar, $newchar) = @$_;
         if ($c eq "u") {
-            $oldchar;
+            $oldnew eq 'new' ? $newchar : $oldchar;
         } elsif ($c eq "+") {
             "$MARKED_GREEN$newchar$GREEN";
         } elsif ($c eq "-") {
@@ -272,29 +272,30 @@ sub sdiff_extract {
 # Splits OLDLINE and NEWLINE into characters, compares them using
 # Algorithm::Diff's sdiff() function and return the result of that function.
 sub char_sdiff {
-    my ($oldline, $newline) = @_;
+    my ($oldline, $newline, $case_sensitive) = @_;
     use Algorithm::Diff 'sdiff';
     return sdiff(
         [ split "", $oldline ],
         [ split "", $newline ],
+        $case_sensitive ? undef : sub { "\L$_[0]" },
     );
 }
 
 sub two_line_hilite {
-    my ($oldline, $newline) = @_;
-    my @diff = char_sdiff $oldline, $newline;
-    $oldline = sdiff_hilite sdiff_merge sdiff_extract("-", @diff);
-    $newline = sdiff_hilite sdiff_merge sdiff_extract("+", @diff);
+    my ($oldline, $newline, $case_sensitive) = @_;
+    my @diff = char_sdiff $oldline, $newline, $case_sensitive;
+    $oldline = sdiff_hilite 'old', sdiff_merge sdiff_extract("-", @diff);
+    $newline = sdiff_hilite 'new', sdiff_merge sdiff_extract("+", @diff);
     return ($oldline, $newline);
 }
 
 sub one_line_hilite {
-    my ($oldline, $newline) = @_;
-    my @diff = char_sdiff $oldline, $newline;
+    my ($oldline, $newline, $case_sensitive) = @_;
+    my @diff = sdiff_merge char_sdiff $oldline, $newline, $case_sensitive;
     return join("", map {
         my ($c, $oldchar, $newchar) = @$_;
         if ($c eq "u") {
-            $oldchar;
+            $newchar;
         } elsif ($c eq "+") {
             "$GREEN$newchar$PLAIN";
         } elsif ($c eq "-") {
@@ -414,41 +415,43 @@ sub one_line_hilite {
 
 sub run {
     my (undef, @arg) = @_;
-
     my %opt = (                                # default options
         all    => 0,
         mark   => 1,
         merge  => 0,
         number => 0,
+        case_sensitive => 1,
     );
     my %cb = (                                 # option callbacks
-        color       => \&color_opt,
-        c           => sub { color_opt_set(1); $opt{mark} = 1 },
-        "no-color"  => sub { color_opt_set(0); $opt{mark} = 0 },
-        help        => sub { @_ and help      },
-        man         => sub { @_ and man       },
-        version     => sub { @_ and version   },
-        "no-mark"   => sub { $opt{mark}   = 0 },
-        "no-number" => sub { $opt{number} = 0 },
+        color         => \&color_opt,
+        c             => sub { color_opt_set(1); $opt{mark} = 1 },
+        "no-color"    => sub { color_opt_set(0); $opt{mark} = 0 },
+        help          => sub { @_ and help      },
+        "ignore-case" => sub { $opt{case_sensitive} = 0 },
+        man           => sub { @_ and man       },
+        version       => sub { @_ and version   },
+        "no-mark"     => sub { $opt{mark}   = 0 },
+        "no-number"   => sub { $opt{number} = 0 },
     );
 
     getoptlong(
-        \@arg,                 # command line arguments
+        \@arg,                   # command line arguments
         \%cb,
-        \%opt,                 # options hash
-        'color|colour=s',      ### WHEN colorize the output; WHEN is 'always',
-                               ### 'never' or 'auto' (the default)
-        'no-color|no-colour|C',### same as '--color=never'
-        'c',                   ### same as '--color=always'
-        'all|a',               ### output all text (not just differing lines)
-        'help|h|?',            ### display this help and exit
-        'man',                 ### display program manpage and exit
-        'mark|m',              ### enable sub-line diffs (default)
-        'no-mark|M',           ### disable sub-line diffs
-        'number|n',            ### show line numbers
-        'no-number|N',         ### suppress line numbers (default)
-        'merge|1',             ### show changed lines as one line
-        'version|V',           ### output version information and exit
+        \%opt,                   # options hash
+        'color|colour=s',        ### WHEN colorize the output; WHEN is 'always',
+                                 ### 'never' or 'auto' (the default)
+        'no-color|no-colour|C',  ### same as '--color=never'
+        'c',                     ### same as '--color=always'
+        'all|a',                 ### output all text (not just differing lines)
+        'help|h|?',              ### display this help and exit
+        'ignore-case|no-case|i', ### ignore case differences in file content
+        'man',                   ### display program manpage and exit
+        'mark|m',                ### enable sub-line diffs (default)
+        'no-mark|M',             ### disable sub-line diffs
+        'number|n',              ### show line numbers
+        'no-number|N',           ### suppress line numbers (default)
+        'merge|1',               ### show changed lines as one line
+        'version|V',             ### output version information and exit
     ) or die "Try '$NAME --help' for more information.\n";
     if (@arg != 2) {
         die "$NAME: Bad number of filenames\n",
@@ -459,7 +462,11 @@ sub run {
     use Algorithm::Diff 'sdiff';
     my @old   = read_file $oldfile;
     my @new   = read_file $newfile;
-    my @sdiff = sdiff(\@old, \@new);
+    my @sdiff = sdiff(
+        \@old,
+        \@new,
+        $opt{case_sensitive} ? undef : sub { "\L$_[0]" },
+    );
     my $out   = Local::Output->new(
         old_width => length(scalar @old),
         new_width => length(scalar @new),
@@ -485,11 +492,11 @@ sub run {
             $new += 1;
         } elsif ($change eq "c") {             # changed
             if ($opt{merge}) {
-                my ($line) = one_line_hilite($oldline, $newline);
+                my ($line) = one_line_hilite($oldline, $newline, $opt{case_sensitive});
                 $out->output_between_diffs(\%opt, \@sdiff, $prev_i, $i, $old, $new);
                 $out->output("", $old, $new, $line);
             } else {
-                ($oldline, $newline) = two_line_hilite($oldline, $newline)
+                ($oldline, $newline) = two_line_hilite($oldline, $newline, $opt{case_sensitive})
                     if $opt{mark};
                 $out->output_between_diffs(\%opt, \@sdiff, $prev_i, $i, $old, $new);
                 $out->output("-", $old, "", $oldline);
@@ -532,6 +539,13 @@ can be one of C<always>, C<never>, or C<auto>.
 
 Turn off colored diff. This can be used to override configuration settings. It
 is the same as B<--color=never>.
+
+=item B<-i>, B<--ignore-case>, B<--no-case>
+
+Ignore case differences in file content.
+
+Note that, when combined with option B<--merge>, the output will display only
+the newer version of the text when there has been case changes.
 
 =back
 
