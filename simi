@@ -297,11 +297,11 @@ sub one_line_hilite {
         if ($c eq "u") {
             $newchar;
         } elsif ($c eq "+") {
-            "$GREEN$newchar$PLAIN";
+            "$GREEN\{+$newchar+}$PLAIN";
         } elsif ($c eq "-") {
-            "$RED$oldchar$PLAIN";
+            "$RED\{-$oldchar-}$PLAIN";
         } elsif ($c eq "c") {
-            "$RED$oldchar$GREEN$newchar$PLAIN";
+            "$RED\{-$oldchar-}$GREEN\{+$newchar+}$PLAIN";
         }
     } @diff);
 }
